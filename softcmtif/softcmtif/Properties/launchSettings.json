@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "softcmtif": {
+      "commandName": "Project",
+      "commandLineArgs": "\"N:\\COMENV\\MyLibrary\\AudioCasette\\AK\\DataTapes\\MysteryDataFromJunkTape1.wav\""
+    }
+  }
+}
