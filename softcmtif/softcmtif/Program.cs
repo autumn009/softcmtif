@@ -29,7 +29,16 @@ namespace softcmtif
             if (bVerbose) Console.WriteLine($"File Length: {new FileInfo(args[0]).Length}");
             var audioStream = new AudioFileReader(args[0]);
             audioStream.Position = 0;
-            if (bVerbose) Console.WriteLine($"Audio Stream Length: {audioStream.Length}");
+            if (bVerbose)
+            {
+                Console.WriteLine($"Audio Stream Length: {audioStream.Length}");
+                Console.WriteLine($"BlockAlign: {audioStream.BlockAlign}");
+                Console.WriteLine($"Channels: {audioStream.WaveFormat.Channels}");
+                Console.WriteLine($"BitsPerSample: {audioStream.WaveFormat.BitsPerSample}");
+                Console.WriteLine($"Encoding: {audioStream.WaveFormat.Encoding}");
+                Console.WriteLine($"ExtraSize: {audioStream.WaveFormat.ExtraSize}");
+                Console.WriteLine($"SampleRate: {audioStream.WaveFormat.SampleRate}");
+            }
 
             //float[] samples = new float[audioStream.Length / audioStream.BlockAlign * audioStream.WaveFormat.Channels];
             //audioStream.Read(samples, 0, samples.Length);
