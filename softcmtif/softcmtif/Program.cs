@@ -2,6 +2,7 @@
 using System.ComponentModel.Design;
 using System.IO;
 using System.Linq;
+using System.Net.Http.Headers;
 using System.Threading.Tasks;
 using NAudio.Wave;
 
@@ -25,19 +26,27 @@ namespace softcmtif
             float[] buffer = null;
             int bufferPointer = 0;
             long peakCount = 0;
+            TextWriter peaklogWriter = null;
             if (args.Length == 0)
             {
                 Console.Error.WriteLine("Soft CMT Interface by autumn");
-                Console.Error.WriteLine("usage: softcmtif INPUT_FILE_NAME [--verbose] [--right|--left|--average]");
+                Console.Error.WriteLine("usage: softcmtif INPUT_FILE_NAME [--verbose] [--right|--left|--average] [--peaklog FILE_NAME]");
                 return;
             }
             bool bVerbose = false;
+            bool peaklogWaiting = false;
             foreach (var item in args.Skip(1))
             {
-                if (item == "--verbose") bVerbose = true;
+                if(peaklogWaiting)
+                {
+                    peaklogWriter = File.CreateText(item);
+                    peaklogWaiting = false;
+                }
+                else if (item == "--verbose") bVerbose = true;
                 else if (item == "--right") channelType = ChannelType.Right;
                 else if (item == "--left") channelType = ChannelType.Left;
                 else if (item == "--average") channelType = ChannelType.Average;
+                else if (item == "--peaklog") peaklogWaiting = true;
                 else
                 {
                     Console.WriteLine($"Unknwon option {item}");
@@ -123,12 +132,14 @@ namespace softcmtif
 
                 if (bVerbose) Console.WriteLine($"Detected: {peakCount} peaks.");
             }
+            if (peaklogWriter != null) peaklogWriter.Close();
             Console.WriteLine("Done");
 
             void notifyPeak(long timeOffset)
             {
                 peakCount++;
                 if (bVerbose && peakCount < 20) Console.Write($"{timeOffset},");
+                if (peaklogWriter != null) peaklogWriter.Write($"{timeOffset},");
             }
 
             float[] readBlock()
