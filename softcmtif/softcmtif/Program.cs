@@ -1,4 +1,5 @@
 ﻿using System;
+using System.ComponentModel.Design;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
@@ -14,21 +15,16 @@ namespace softcmtif
         Average
     }
 
-    class MyWaveReader
-    {
-
-
-        public MyWaveReader()
-        {
-
-        }
-    }
-
     class Program
     {
-        static async Task Main(string[] args)
+        static void Main(string[] args)
         {
             ChannelType channelType = ChannelType.Null;
+            AudioFileReader audioStream = null;
+            long currentBaseOffset = 0;
+            float[] buffer = null;
+            int bufferPointer = 0;
+            long peakCount = 0;
             if (args.Length == 0)
             {
                 Console.Error.WriteLine("Soft CMT Interface by autumn");
@@ -49,7 +45,7 @@ namespace softcmtif
                 }
             }
             if (bVerbose) Console.WriteLine($"File Length: {new FileInfo(args[0]).Length}");
-            using (var audioStream = new AudioFileReader(args[0]))
+            using (audioStream = new AudioFileReader(args[0]))
             {
                 audioStream.Position = 0;
                 if (bVerbose)
@@ -81,23 +77,110 @@ namespace softcmtif
                 }
                 if (bVerbose) Console.WriteLine($"Channel selected: ChannelType:{channelType}");
 
+                // detect awave peaks
+                Tuple<float, long> peak = new Tuple<float, long>(0,0);
+                long lastPeakOffset = 0;
+                bool upper = true;
+                for (; ; )
+                {
+                    var d = readUnit();
+                    if (d == null) break;
 
-
+                    if (upper)
+                    {
+                        if (d.Item1 > peak.Item1) peak = d;
+                        else if (d.Item1 < 0.0f)
+                        {
+                            notifyPeak(peak.Item2 - lastPeakOffset);
+                            lastPeakOffset = peak.Item2;
+                            upper = false;
+                            peak = d;
+                        }
+                    }
+                    else
+                    {
+                        if (d.Item1 < peak.Item1) peak = d;
+                        else if (d.Item1 > 0.0f)
+                        {
+                            notifyPeak(peak.Item2 - lastPeakOffset);
+                            lastPeakOffset = peak.Item2;
+                            upper = true;
+                            peak = d;
+                        }
+                    }
+                }
 
                 //float[] samples = new float[audioStream.Length / audioStream.BlockAlign * audioStream.WaveFormat.Channels];
                 //audioStream.Read(samples, 0, samples.Length);
 
 
 
-                    // playback
-                    //var outputDevice = new WaveOutEvent();
-                    //outputDevice.Init(audioStream);
-                    //outputDevice.Play();
-                    //await Task.Delay(10000);
+                // playback
+                //var outputDevice = new WaveOutEvent();
+                //outputDevice.Init(audioStream);
+                //outputDevice.Play();
+                //await Task.Delay(10000);
 
+                if (bVerbose) Console.WriteLine($"Detected: {peakCount} peaks.");
             }
             Console.WriteLine("Done");
+
+            void notifyPeak(long timeOffset)
+            {
+                peakCount++;
+                if (bVerbose && peakCount < 20) Console.Write($"{timeOffset},");
+            }
+
+            float[] readBlock()
+            {
+                var buf = new float[256];
+                currentBaseOffset = audioStream.Position;
+                var bytes = audioStream.Read(buf, 0, buf.Length);
+                if (bytes == 0) return null;
+                return buf;
+            }
+
+            Tuple<float, long> readRawUnit()
+            {
+                if (buffer == null || bufferPointer >= buffer.Length)
+                {
+                    buffer = readBlock();
+                    if (buffer == null) return null;
+                    bufferPointer = 0;
+                }
+                var r = new Tuple<float, long>(buffer[bufferPointer], bufferPointer + currentBaseOffset);
+                bufferPointer++;
+                return r;
+            }
+
+            Tuple<float, long> readUnit()
+            {
+                Tuple<float, long> t = null;
+                var l = readRawUnit();
+                if (l == null) return null;
+                if (audioStream.WaveFormat.Channels == 0)
+                {
+                    t = l;
+                }
+                else
+                {
+                    var r = readRawUnit();
+                    if (r == null) return null;
+                    switch (channelType)
+                    {
+                        case ChannelType.Left:
+                            t = l;
+                            break;
+                        case ChannelType.Right:
+                            t = r;
+                            break;
+                        default:
+                            t = new Tuple<float, long>((r.Item1 + l.Item1) / 2, l.Item2);
+                            break;
+                    }
+                }
+                return t;
+            }
         }
     }
-
 }
