@@ -95,12 +95,14 @@ namespace softcmtif
                     var d = readUnit();
                     if (d == null) break;
 
+                    if (peaklogWriter != null) peaklogWriter.WriteLine($"[{d.Item1} {d.Item2}]");
                     if (upper)
                     {
                         if (d.Item1 > peak.Item1) peak = d;
                         else if (d.Item1 < 0.0f)
                         {
                             notifyPeak(peak.Item2 - lastPeakOffset);
+                            if (peaklogWriter != null) peaklogWriter.WriteLine($"PEAK {peak.Item2 - lastPeakOffset} {peak.Item2}");
                             lastPeakOffset = peak.Item2;
                             upper = false;
                             peak = d;
@@ -112,6 +114,7 @@ namespace softcmtif
                         else if (d.Item1 > 0.0f)
                         {
                             notifyPeak(peak.Item2 - lastPeakOffset);
+                            if (peaklogWriter != null) peaklogWriter.WriteLine($"PEAK {peak.Item2 - lastPeakOffset} {peak.Item2}");
                             lastPeakOffset = peak.Item2;
                             upper = true;
                             peak = d;
@@ -138,8 +141,7 @@ namespace softcmtif
             void notifyPeak(long timeOffset)
             {
                 peakCount++;
-                if (bVerbose && peakCount < 20) Console.Write($"{timeOffset},");
-                if (peaklogWriter != null) peaklogWriter.Write($"{timeOffset},");
+                //if (bVerbose && peakCount < 20) Console.Write($"{timeOffset},");
             }
 
             float[] readBlock()
