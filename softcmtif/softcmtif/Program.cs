@@ -18,6 +18,11 @@ namespace softcmtif
         Maximum
     }
 
+    enum Speeds
+    {
+        s300bps, s600bps, s1200bps
+    }
+
     class Program
     {
         static void Main(string[] args)
@@ -34,18 +39,27 @@ namespace softcmtif
             Tuple<float, long> peak = new Tuple<float, long>(0, 0);
             long lastPeakOffset = 0;
             bool upper = true;
+            Speeds speed = Speeds.s600bps;
+            int OnePeaks;
+            int ZeroPeaks;
+            int ThresholdPeakCount;
+            int TypicalOneCount;
+            int TypicalZeroCount;
+            int peakCount1 = 0;
+            int peakCount0 = 0;
+            bool[] shiftRegister = new bool[10];
 
             if (args.Length == 0)
             {
                 Console.Error.WriteLine("Soft CMT Interface by autumn");
-                Console.Error.WriteLine("usage: softcmtif INPUT_FILE_NAME [--verbose] [--right|--left|--average|--maximum] [--peaklog FILE_NAME]");
+                Console.Error.WriteLine("usage: softcmtif INPUT_FILE_NAME [--verbose] [--300|--600|--1200] [--right|--left|--average|--maximum] [--peaklog FILE_NAME]");
                 return;
             }
             bool bVerbose = false;
             bool peaklogWaiting = false;
             foreach (var item in args.Skip(1))
             {
-                if(peaklogWaiting)
+                if (peaklogWaiting)
                 {
                     peaklogWriter = File.CreateText(item);
                     peaklogWaiting = false;
@@ -56,6 +70,9 @@ namespace softcmtif
                 else if (item == "--average") channelType = ChannelType.Average;
                 else if (item == "--maximum") channelType = ChannelType.Maximum;
                 else if (item == "--peaklog") peaklogWaiting = true;
+                else if (item == "--300") speed = Speeds.s300bps;
+                else if (item == "--600") speed = Speeds.s600bps;
+                else if (item == "--1200") speed = Speeds.s1200bps;
                 else
                 {
                     Console.WriteLine($"Unknwon option {item}");
@@ -66,6 +83,8 @@ namespace softcmtif
             using (audioStream = new AudioFileReader(args[0]))
             {
                 audioStream.Position = 0;
+                setSpeed();
+                clearShiftRegister();
                 if (bVerbose)
                 {
                     Console.WriteLine($"Audio Stream Length: {audioStream.Length}");
@@ -135,11 +154,40 @@ namespace softcmtif
             if (peaklogWriter != null) peaklogWriter.Close();
             Console.WriteLine("Done");
 
+            void notifyByte(int value)
+            {
+                if (peaklogWriter != null) peaklogWriter.WriteLine($"BYTE {value:X2}");
+                // TBW
+            }
+
+            void clearShiftRegister()
+            {
+                for (int i = 0; i < shiftRegister.Length; i++) shiftRegister[i] = true;
+            }
+
+            void notifyBit(bool bit)
+            {
+                for (int i = 0; i < shiftRegister.Length - 1; i++) shiftRegister[i] = shiftRegister[i + 1];
+                shiftRegister[shiftRegister.Length - 1] = bit;
+                if (shiftRegister[0] == false && shiftRegister[9] == true)
+                {
+                    // found frame
+                    var val = 0;
+                    for (int j = 0; j < 8; j++)
+                    {
+                        val <<= 1;
+                        if (shiftRegister[j + 1]) val |= 1;
+                    }
+                    notifyByte(val);
+                    clearShiftRegister();
+                }
+            }
+
             void setPeak(Tuple<float, long> d, bool upperValue)
             {
                 var timeOffset = (peak.Item2 - lastPeakOffset) / audioStream.WaveFormat.Channels;
                 notifyPeak(timeOffset);
-                if (peaklogWriter != null) peaklogWriter.WriteLine($"PEAK {timeOffset} {peak.Item2}");
+                //if (peaklogWriter != null) peaklogWriter.WriteLine($"PEAK {timeOffset} {peak.Item2}");
                 lastPeakOffset = peak.Item2;
                 peak = d;
                 upper = upperValue;
@@ -149,6 +197,28 @@ namespace softcmtif
             {
                 peakCount++;
                 //if (bVerbose && peakCount < 20) Console.Write($"{timeOffset},");
+                var b = timeOffset < ThresholdPeakCount;
+                //if (peaklogWriter != null) peaklogWriter.WriteLine($"[{(b ? 1 : 0)}]");
+
+                if (b) peakCount1++; else peakCount0++;
+                if (peakCount1 > peakCount0)
+                {
+                    if (peakCount1 + peakCount0 == OnePeaks)
+                    {
+                        notifyBit(true);
+                        peakCount1 = 0;
+                        peakCount0 = 0;
+                    }
+                }
+                else
+                {
+                    if (peakCount1 + peakCount0 == ZeroPeaks)
+                    {
+                        notifyBit(false);
+                        peakCount1 = 0;
+                        peakCount0 = 0;
+                    }
+                }
             }
 
             float[] readBlock()
@@ -219,6 +289,30 @@ namespace softcmtif
                     }
                 }
                 return t;
+            }
+
+            void setSpeed()
+            {
+                TypicalZeroCount = (int)(1.0 / 1200 / 2 * audioStream.WaveFormat.SampleRate);
+                TypicalOneCount = (int)(1.0 / 2400 / 2 * audioStream.WaveFormat.SampleRate);
+                ThresholdPeakCount = (TypicalZeroCount + TypicalOneCount) / 2;
+                if (bVerbose) Console.WriteLine($"TypicalZeroCount:{TypicalZeroCount} TypicalOneCount:{TypicalOneCount} ThresholdPeakCount:{ThresholdPeakCount}");
+
+                switch (speed)
+                {
+                    case Speeds.s300bps:
+                        OnePeaks = 8 * 2;
+                        ZeroPeaks = 4 * 2;
+                        break;
+                    case Speeds.s600bps:
+                        OnePeaks = 4 * 2;
+                        ZeroPeaks = 2 * 2;
+                        break;
+                    default:
+                        OnePeaks = 2 * 2;
+                        ZeroPeaks = 1 * 2;
+                        break;
+                }
             }
 
             void upperAndLowerPeak()
