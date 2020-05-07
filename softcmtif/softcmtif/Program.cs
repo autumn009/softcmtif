@@ -14,7 +14,8 @@ namespace softcmtif
         Null,
         Right,
         Left,
-        Average
+        Average,
+        Maximum
     }
 
     class Program
@@ -33,7 +34,7 @@ namespace softcmtif
             if (args.Length == 0)
             {
                 Console.Error.WriteLine("Soft CMT Interface by autumn");
-                Console.Error.WriteLine("usage: softcmtif INPUT_FILE_NAME [--verbose] [--right|--left|--average] [--peaklog FILE_NAME]");
+                Console.Error.WriteLine("usage: softcmtif INPUT_FILE_NAME [--verbose] [--right|--left|--average|--maximum] [--peaklog FILE_NAME]");
                 return;
             }
             bool bVerbose = false;
@@ -49,6 +50,7 @@ namespace softcmtif
                 else if (item == "--right") channelType = ChannelType.Right;
                 else if (item == "--left") channelType = ChannelType.Left;
                 else if (item == "--average") channelType = ChannelType.Average;
+                else if (item == "--maximum") channelType = ChannelType.Maximum;
                 else if (item == "--peaklog") peaklogWaiting = true;
                 else
                 {
@@ -80,7 +82,7 @@ namespace softcmtif
                 }
                 else if (audioStream.WaveFormat.Channels == 2)
                 {
-                    if (channelType == ChannelType.Null) channelType = ChannelType.Average;
+                    if (channelType == ChannelType.Null) channelType = ChannelType.Maximum;
                 }
                 else
                 {
@@ -172,8 +174,16 @@ namespace softcmtif
                 var v = buffer[bufferPointer];
 
                 // noise silencer
-                if (v > 0 && v < upperPeak / NoiseSilencerEffect) v = 0;
-                if (v < 0 && v > lowerPeak / NoiseSilencerEffect) v = 0;
+                if (v > 0 && v < upperPeak / NoiseSilencerEffect)
+                {
+                    v = 0;
+                    if (peaklogWriter != null) peaklogWriter.WriteLine("Detect upper cancel");
+                }
+                if (v < 0 && v > lowerPeak / NoiseSilencerEffect)
+                {
+                    v = 0;
+                    if (peaklogWriter != null) peaklogWriter.WriteLine("Detect lower cancel");
+                }
 
                 var r = new Tuple<float, long>(v, bufferPointer + currentBaseOffset);
                 bufferPointer++;
