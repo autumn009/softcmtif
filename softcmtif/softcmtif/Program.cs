@@ -3,6 +3,7 @@ using System.ComponentModel.Design;
 using System.IO;
 using System.Linq;
 using System.Net.Http.Headers;
+using System.Runtime.InteropServices.ComTypes;
 using System.Threading.Tasks;
 using NAudio.Wave;
 
@@ -27,6 +28,7 @@ namespace softcmtif
             int bufferPointer = 0;
             long peakCount = 0;
             TextWriter peaklogWriter = null;
+            float upperPeak, lowerPeak;
             if (args.Length == 0)
             {
                 Console.Error.WriteLine("Soft CMT Interface by autumn");
@@ -86,7 +88,12 @@ namespace softcmtif
                 }
                 if (bVerbose) Console.WriteLine($"Channel selected: ChannelType:{channelType}");
 
-                // detect awave peaks
+                // detect upper peak and lower peak
+                audioStream.Position = 0;
+                upperAndLowerPeak();
+
+                // detect wave peaks
+                audioStream.Position = 0;
                 Tuple<float, long> peak = new Tuple<float, long>(0,0);
                 long lastPeakOffset = 0;
                 bool upper = true;
@@ -193,6 +200,20 @@ namespace softcmtif
                     }
                 }
                 return t;
+            }
+
+            void upperAndLowerPeak()
+            {
+                upperPeak = 0.0f;
+                lowerPeak = 0.0f;
+                for (; ; )
+                {
+                    var pair = readUnit();
+                    if (pair == null) break;
+                    if (upperPeak < pair.Item1) upperPeak = pair.Item1;
+                    if (lowerPeak > pair.Item1) lowerPeak = pair.Item1;
+                }
+                if (bVerbose) Console.WriteLine($"Detect upperPeak/lowerPeak: {upperPeak}/{lowerPeak}");
             }
         }
     }
