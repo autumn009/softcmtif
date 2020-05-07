@@ -31,6 +31,10 @@ namespace softcmtif
             long peakCount = 0;
             TextWriter peaklogWriter = null;
             float upperPeak, lowerPeak;
+            Tuple<float, long> peak = new Tuple<float, long>(0, 0);
+            long lastPeakOffset = 0;
+            bool upper = true;
+
             if (args.Length == 0)
             {
                 Console.Error.WriteLine("Soft CMT Interface by autumn");
@@ -97,9 +101,6 @@ namespace softcmtif
 
                 // detect wave peaks
                 audioStream.Position = 0;
-                Tuple<float, long> peak = new Tuple<float, long>(0,0);
-                long lastPeakOffset = 0;
-                bool upper = true;
                 for (; ; )
                 {
                     var d = readUnit();
@@ -109,26 +110,12 @@ namespace softcmtif
                     if (upper)
                     {
                         if (d.Item1 > peak.Item1) peak = d;
-                        else if (d.Item1 < 0.0f)
-                        {
-                            notifyPeak(peak.Item2 - lastPeakOffset);
-                            if (peaklogWriter != null) peaklogWriter.WriteLine($"PEAK {peak.Item2 - lastPeakOffset} {peak.Item2}");
-                            lastPeakOffset = peak.Item2;
-                            upper = false;
-                            peak = d;
-                        }
+                        else if (d.Item1 < 0.0f) setPeak(d, false);
                     }
                     else
                     {
                         if (d.Item1 < peak.Item1) peak = d;
-                        else if (d.Item1 > 0.0f)
-                        {
-                            notifyPeak(peak.Item2 - lastPeakOffset);
-                            if (peaklogWriter != null) peaklogWriter.WriteLine($"PEAK {peak.Item2 - lastPeakOffset} {peak.Item2}");
-                            lastPeakOffset = peak.Item2;
-                            upper = true;
-                            peak = d;
-                        }
+                        else if (d.Item1 > 0.0f) setPeak(d, true);
                     }
                 }
 
@@ -148,6 +135,16 @@ namespace softcmtif
             if (peaklogWriter != null) peaklogWriter.Close();
             Console.WriteLine("Done");
 
+            void setPeak(Tuple<float, long> d, bool upperValue)
+            {
+                var timeOffset = (peak.Item2 - lastPeakOffset) / audioStream.WaveFormat.Channels;
+                notifyPeak(timeOffset);
+                if (peaklogWriter != null) peaklogWriter.WriteLine($"PEAK {timeOffset} {peak.Item2}");
+                lastPeakOffset = peak.Item2;
+                peak = d;
+                upper = upperValue;
+            }
+
             void notifyPeak(long timeOffset)
             {
                 peakCount++;
@@ -157,7 +154,6 @@ namespace softcmtif
             float[] readBlock()
             {
                 var buf = new float[256];
-                currentBaseOffset = audioStream.Position;
                 var bytes = audioStream.Read(buf, 0, buf.Length);
                 if (bytes == 0) return null;
                 return buf;
@@ -169,6 +165,8 @@ namespace softcmtif
                 {
                     buffer = readBlock();
                     if (buffer == null) return null;
+                    //currentBaseOffset = audioStream.Position;
+                    currentBaseOffset += bufferPointer;
                     bufferPointer = 0;
                 }
                 var v = buffer[bufferPointer];
@@ -177,12 +175,12 @@ namespace softcmtif
                 if (v > 0 && v < upperPeak / NoiseSilencerEffect)
                 {
                     v = 0;
-                    if (peaklogWriter != null) peaklogWriter.WriteLine("Detect upper cancel");
+                    //if (peaklogWriter != null) peaklogWriter.WriteLine("Detect upper cancel");
                 }
                 if (v < 0 && v > lowerPeak / NoiseSilencerEffect)
                 {
                     v = 0;
-                    if (peaklogWriter != null) peaklogWriter.WriteLine("Detect lower cancel");
+                    //if (peaklogWriter != null) peaklogWriter.WriteLine("Detect lower cancel");
                 }
 
                 var r = new Tuple<float, long>(v, bufferPointer + currentBaseOffset);
@@ -210,6 +208,10 @@ namespace softcmtif
                             break;
                         case ChannelType.Right:
                             t = r;
+                            break;
+                        case ChannelType.Maximum:
+                            if (r.Item1 >= 0 && l.Item1 >= 0) t = new Tuple<float, long>(Math.Max(r.Item1, l.Item1), l.Item2);
+                            else t = new Tuple<float, long>(Math.Min(r.Item1, l.Item1), l.Item2);
                             break;
                         default:
                             t = new Tuple<float, long>((r.Item1 + l.Item1) / 2, l.Item2);
