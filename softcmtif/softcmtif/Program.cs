@@ -21,6 +21,7 @@ namespace softcmtif
     {
         static void Main(string[] args)
         {
+            const int NoiseSilencerEffect = 10;
             ChannelType channelType = ChannelType.Null;
             AudioFileReader audioStream = null;
             long currentBaseOffset = 0;
@@ -102,7 +103,7 @@ namespace softcmtif
                     var d = readUnit();
                     if (d == null) break;
 
-                    if (peaklogWriter != null) peaklogWriter.WriteLine($"[{d.Item1} {d.Item2}]");
+                    //if (peaklogWriter != null) peaklogWriter.WriteLine($"[{d.Item1} {d.Item2}]");
                     if (upper)
                     {
                         if (d.Item1 > peak.Item1) peak = d;
@@ -168,7 +169,13 @@ namespace softcmtif
                     if (buffer == null) return null;
                     bufferPointer = 0;
                 }
-                var r = new Tuple<float, long>(buffer[bufferPointer], bufferPointer + currentBaseOffset);
+                var v = buffer[bufferPointer];
+
+                // noise silencer
+                if (v > 0 && v < upperPeak / NoiseSilencerEffect) v = 0;
+                if (v < 0 && v > lowerPeak / NoiseSilencerEffect) v = 0;
+
+                var r = new Tuple<float, long>(v, bufferPointer + currentBaseOffset);
                 bufferPointer++;
                 return r;
             }
