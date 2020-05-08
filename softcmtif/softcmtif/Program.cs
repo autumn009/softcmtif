@@ -35,6 +35,7 @@ namespace softcmtif
             int bufferPointer = 0;
             long peakCount = 0;
             TextWriter peaklogWriter = null;
+            TextWriter outRawWriter = null;
             float upperPeak, lowerPeak;
             Tuple<float, long> peak = new Tuple<float, long>(0, 0);
             long lastPeakOffset = 0;
@@ -52,11 +53,12 @@ namespace softcmtif
             if (args.Length == 0)
             {
                 Console.Error.WriteLine("Soft CMT Interface by autumn");
-                Console.Error.WriteLine("usage: softcmtif INPUT_FILE_NAME [--verbose] [--300|--600|--1200] [--right|--left|--average|--maximum] [--peaklog FILE_NAME]");
+                Console.Error.WriteLine("usage: softcmtif INPUT_FILE_NAME [--verbose] [--300|--600|--1200] [--right|--left|--average|--maximum] [--peaklog FILE_NAME] [--outraw FILE_NAME]");
                 return;
             }
             bool bVerbose = false;
             bool peaklogWaiting = false;
+            bool outRawWaiting = false;
             foreach (var item in args.Skip(1))
             {
                 if (peaklogWaiting)
@@ -64,12 +66,18 @@ namespace softcmtif
                     peaklogWriter = File.CreateText(item);
                     peaklogWaiting = false;
                 }
+                else if (outRawWaiting)
+                {
+                    outRawWriter = File.CreateText(item);
+                    outRawWaiting = false;
+                }
                 else if (item == "--verbose") bVerbose = true;
                 else if (item == "--right") channelType = ChannelType.Right;
                 else if (item == "--left") channelType = ChannelType.Left;
                 else if (item == "--average") channelType = ChannelType.Average;
                 else if (item == "--maximum") channelType = ChannelType.Maximum;
                 else if (item == "--peaklog") peaklogWaiting = true;
+                else if (item == "--outraw") outRawWaiting = true;
                 else if (item == "--300") speed = Speeds.s300bps;
                 else if (item == "--600") speed = Speeds.s600bps;
                 else if (item == "--1200") speed = Speeds.s1200bps;
@@ -152,11 +160,14 @@ namespace softcmtif
                 if (bVerbose) Console.WriteLine($"Detected: {peakCount} peaks.");
             }
             if (peaklogWriter != null) peaklogWriter.Close();
+            if (outRawWriter != null) outRawWriter.Close();
             Console.WriteLine("Done");
 
             void notifyByte(int value)
             {
                 if (peaklogWriter != null) peaklogWriter.WriteLine($"BYTE {value:X2}");
+                if (outRawWriter != null) outRawWriter.Write((char)value);
+
                 // TBW
             }
 
