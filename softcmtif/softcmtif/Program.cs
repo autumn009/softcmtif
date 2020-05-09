@@ -52,6 +52,9 @@ namespace softcmtif
             int peakCount0 = 0;
             bool?[] shiftRegister = new bool?[10];
             bool bSeekingHeader;
+            long? windowStartOffset = null;
+            int windowLength;
+            float lastValue = 0.0f;
 
             if (args.Length == 0)
             {
@@ -96,6 +99,7 @@ namespace softcmtif
             {
                 audioStream.Position = 0;
                 setSpeed();
+                windowLength = (int)(1.0 / 2400 / 2 * OnePeaks * 0.98 * audioStream.WaveFormat.SampleRate);
                 clearShiftRegister();
                 if (bVerbose)
                 {
@@ -136,8 +140,12 @@ namespace softcmtif
                 {
                     var d = readUnit();
                     if (d == null) break;
-
                     //if (peaklogWriter != null) peaklogWriter.WriteLine($"[{d.Item1} {d.Item2}]");
+
+                    if (windowStartOffset + windowLength <= currentBaseOffset + bufferPointer)
+                    {
+                        bitsAnalyzer();
+                    }
                     if (upper)
                     {
                         if (d.Item1 > peak.Item1) peak = d;
@@ -148,6 +156,13 @@ namespace softcmtif
                         if (d.Item1 < peak.Item1) peak = d;
                         else if (d.Item1 > 0.0f) setPeak(d, true);
                     }
+                    if (windowStartOffset == null)
+                    {
+                        if ((d.Item1 >= 0.0f && lastValue < 0.0f)
+                            || (d.Item1 <= 0.0f && lastValue > 0.0f))
+                            windowStartOffset = d.Item2; // start window
+                    }
+                    lastValue = d.Item1;
                 }
 
                 //float[] samples = new float[audioStream.Length / audioStream.BlockAlign * audioStream.WaveFormat.Channels];
@@ -199,6 +214,34 @@ namespace softcmtif
                 }
             }
 
+            void bitsAnalyzer()
+            {
+                if ((peakCount0 == 0 && peakCount1 == 0) || peakCount0 + peakCount1 * 2 > OnePeaks + 1)
+                {
+                    notifyBit(null);
+                }
+                else
+                {
+                    var d0 = Math.Abs(peakCount0 - ZeroPeaks);
+                    var d1 = Math.Abs(peakCount1 - OnePeaks);
+                    notifyBit(d0 < d1);
+                }
+
+                // initialize of next bit
+                windowStartOffset = null;
+                peakCount1 = 0;
+                peakCount0 = 0;
+            }
+
+            void notifyPeak(long timeOffset)
+            {
+                //if (bVerbose && peakCount < 20) Console.Write($"{timeOffset},");
+                peakCount++;
+                var b = timeOffset < ThresholdPeakCount;
+                if (b) peakCount1++; else peakCount0++;
+                //if (peaklogWriter != null) peaklogWriter.WriteLine($"[{(b ? 1 : 0)}]");
+            }
+
             void setPeak(Tuple<float, long> d, bool upperValue)
             {
                 var timeOffset = (peak.Item2 - lastPeakOffset) / audioStream.WaveFormat.Channels;
@@ -207,34 +250,6 @@ namespace softcmtif
                 lastPeakOffset = peak.Item2;
                 peak = d;
                 upper = upperValue;
-            }
-
-            void notifyPeak(long timeOffset)
-            {
-                peakCount++;
-                //if (bVerbose && peakCount < 20) Console.Write($"{timeOffset},");
-                var b = timeOffset < ThresholdPeakCount;
-                //if (peaklogWriter != null) peaklogWriter.WriteLine($"[{(b ? 1 : 0)}]");
-
-                if (b) peakCount1++; else peakCount0++;
-                if (peakCount1 > peakCount0)
-                {
-                    if (peakCount1 + peakCount0*2 >= OnePeaks)
-                    {
-                        notifyBit(true);
-                        peakCount1 = 0;
-                        peakCount0 = 0;
-                    }
-                }
-                else
-                {
-                    if (peakCount1 + peakCount0*2 >= OnePeaks)
-                    {
-                        notifyBit(false);
-                        peakCount1 = 0;
-                        peakCount0 = 0;
-                    }
-                }
             }
 
             float[] readBlock()
