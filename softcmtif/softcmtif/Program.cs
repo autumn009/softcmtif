@@ -214,7 +214,7 @@ namespace softcmtif
                 if (b) peakCount1++; else peakCount0++;
                 if (peakCount1 > peakCount0)
                 {
-                    if (peakCount1 + peakCount0 >= OnePeaks)
+                    if (peakCount1 + peakCount0*2 >= OnePeaks)
                     {
                         notifyBit(true);
                         peakCount1 = 0;
@@ -223,7 +223,7 @@ namespace softcmtif
                 }
                 else
                 {
-                    if (peakCount1 + peakCount0 >= ZeroPeaks)
+                    if (peakCount1 + peakCount0*2 >= OnePeaks)
                     {
                         notifyBit(false);
                         peakCount1 = 0;
