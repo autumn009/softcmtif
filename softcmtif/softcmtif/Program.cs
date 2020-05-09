@@ -186,8 +186,8 @@ namespace softcmtif
                     var val = 0;
                     for (int j = 0; j < 8; j++)
                     {
-                        val <<= 1;
-                        if (shiftRegister[j + 1]) val |= 1;
+                        val >>= 1;
+                        if (shiftRegister[j + 1]) val |= 0x80;
                     }
                     notifyByte(val);
                     clearShiftRegister();
