@@ -1,5 +1,7 @@
 ﻿using System;
+using System.ComponentModel;
 using System.ComponentModel.Design;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net.Http.Headers;
@@ -48,7 +50,8 @@ namespace softcmtif
             int TypicalZeroCount;
             int peakCount1 = 0;
             int peakCount0 = 0;
-            bool[] shiftRegister = new bool[10];
+            bool?[] shiftRegister = new bool?[10];
+            bool bSeekingHeader;
 
             if (args.Length == 0)
             {
@@ -88,6 +91,7 @@ namespace softcmtif
                 }
             }
             if (bVerbose) Console.WriteLine($"File Length: {new FileInfo(args[0]).Length}");
+            bSeekingHeader = true;
             using (audioStream = new AudioFileReader(args[0]))
             {
                 audioStream.Position = 0;
@@ -176,7 +180,7 @@ namespace softcmtif
                 for (int i = 0; i < shiftRegister.Length; i++) shiftRegister[i] = true;
             }
 
-            void notifyBit(bool bit)
+            void notifyBit(bool? bit)
             {
                 for (int i = 0; i < shiftRegister.Length - 1; i++) shiftRegister[i] = shiftRegister[i + 1];
                 shiftRegister[shiftRegister.Length - 1] = bit;
@@ -187,7 +191,8 @@ namespace softcmtif
                     for (int j = 0; j < 8; j++)
                     {
                         val >>= 1;
-                        if (shiftRegister[j + 1]) val |= 0x80;
+                        if (shiftRegister[j + 1] == true) val |= 0x80;
+                        else if (shiftRegister[j + 1] == null) tapeReadError();
                     }
                     notifyByte(val);
                     clearShiftRegister();
@@ -338,6 +343,13 @@ namespace softcmtif
                     if (lowerPeak > pair.Item1) lowerPeak = pair.Item1;
                 }
                 if (bVerbose) Console.WriteLine($"Detect upperPeak/lowerPeak: {upperPeak}/{lowerPeak}");
+            }
+
+            void tapeReadError()
+            {
+                if (bSeekingHeader) return;
+                Console.WriteLine("Tape Read Error");
+                Process.GetCurrentProcess().Close();
             }
         }
     }
