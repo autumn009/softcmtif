@@ -142,25 +142,31 @@ namespace softcmtif
                     if (d == null) break;
                     //if (peaklogWriter != null) peaklogWriter.WriteLine($"[{d.Item1} {d.Item2}]");
 
-                    if (windowStartOffset + windowLength <= currentBaseOffset + bufferPointer)
+                    if (windowStartOffset != null && windowStartOffset + windowLength <= currentBaseOffset + bufferPointer)
                     {
                         bitsAnalyzer();
                     }
+                    var result = true;
                     if (upper)
                     {
                         if (d.Item1 > peak.Item1) peak = d;
-                        else if (d.Item1 < 0.0f) setPeak(d, false);
+                        else if (d.Item1 < 0.0f) result = setPeak(d, false);
                     }
                     else
                     {
                         if (d.Item1 < peak.Item1) peak = d;
-                        else if (d.Item1 > 0.0f) setPeak(d, true);
+                        else if (d.Item1 > 0.0f) result = setPeak(d, true);
                     }
-                    if (windowStartOffset == null)
+                    if (result == false && windowStartOffset == null)
                     {
                         if ((d.Item1 >= 0.0f && lastValue < 0.0f)
                             || (d.Item1 <= 0.0f && lastValue > 0.0f))
-                            windowStartOffset = d.Item2; // start window
+                        {
+                            // start time window
+                            windowStartOffset = d.Item2;
+                            peakCount1 = 0;
+                            peakCount0 = 0;
+                        }
                     }
                     lastValue = d.Item1;
                 }
@@ -229,27 +235,27 @@ namespace softcmtif
 
                 // initialize of next bit
                 windowStartOffset = null;
-                peakCount1 = 0;
-                peakCount0 = 0;
             }
 
-            void notifyPeak(long timeOffset)
+            bool notifyPeak(long timeOffset)
             {
                 //if (bVerbose && peakCount < 20) Console.Write($"{timeOffset},");
                 peakCount++;
                 var b = timeOffset < ThresholdPeakCount;
                 if (b) peakCount1++; else peakCount0++;
                 //if (peaklogWriter != null) peaklogWriter.WriteLine($"[{(b ? 1 : 0)}]");
+                return b;
             }
 
-            void setPeak(Tuple<float, long> d, bool upperValue)
+            bool setPeak(Tuple<float, long> d, bool upperValue)
             {
                 var timeOffset = (peak.Item2 - lastPeakOffset) / audioStream.WaveFormat.Channels;
-                notifyPeak(timeOffset);
+                var r = notifyPeak(timeOffset);
                 //if (peaklogWriter != null) peaklogWriter.WriteLine($"PEAK {timeOffset} {peak.Item2}");
                 lastPeakOffset = peak.Item2;
                 peak = d;
                 upper = upperValue;
+                return r;
             }
 
             float[] readBlock()
