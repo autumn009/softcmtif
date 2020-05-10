@@ -2,7 +2,7 @@
   "profiles": {
     "softcmtif": {
       "commandName": "Project",
-      "commandLineArgs": "\"N:\\COMENV\\MyLibrary\\AudioCasette\\AK\\DataTapes\\MysteryDataFromJunkTape1.wav\" --verbose --peaklog peak.txt --outraw raw.bin"
+      "commandLineArgs": "\"N:\\COMENV\\MyLibrary\\AudioCasette\\AK\\DataTapes\\demo1.wav\" --verbose --peaklog peak.txt --outraw raw.bin"
     }
   }
 }

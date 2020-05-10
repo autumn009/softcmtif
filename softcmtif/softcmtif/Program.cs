@@ -1,7 +1,5 @@
 ﻿using System;
-using System.ComponentModel;
 using System.ComponentModel.Design;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net.Http.Headers;
@@ -50,11 +48,7 @@ namespace softcmtif
             int TypicalZeroCount;
             int peakCount1 = 0;
             int peakCount0 = 0;
-            bool?[] shiftRegister = new bool?[10];
-            bool bSeekingHeader;
-            long? windowStartOffset = null;
-            int windowLength;
-            float lastValue = 0.0f;
+            bool[] shiftRegister = new bool[10];
 
             if (args.Length == 0)
             {
@@ -94,12 +88,10 @@ namespace softcmtif
                 }
             }
             if (bVerbose) Console.WriteLine($"File Length: {new FileInfo(args[0]).Length}");
-            bSeekingHeader = true;
             using (audioStream = new AudioFileReader(args[0]))
             {
                 audioStream.Position = 0;
                 setSpeed();
-                windowLength = (int)(1.0 / 2400 / 2 * OnePeaks * 0.98 * audioStream.WaveFormat.SampleRate);
                 clearShiftRegister();
                 if (bVerbose)
                 {
@@ -140,35 +132,18 @@ namespace softcmtif
                 {
                     var d = readUnit();
                     if (d == null) break;
-                    //if (peaklogWriter != null) peaklogWriter.WriteLine($"[{d.Item1} {d.Item2}]");
 
-                    if (windowStartOffset != null && windowStartOffset + windowLength <= currentBaseOffset + bufferPointer)
-                    {
-                        bitsAnalyzer();
-                    }
-                    var result = true;
+                    //if (peaklogWriter != null) peaklogWriter.WriteLine($"[{d.Item1} {d.Item2}]");
                     if (upper)
                     {
                         if (d.Item1 > peak.Item1) peak = d;
-                        else if (d.Item1 < 0.0f) result = setPeak(d, false);
+                        else if (d.Item1 < 0.0f) setPeak(d, false);
                     }
                     else
                     {
                         if (d.Item1 < peak.Item1) peak = d;
-                        else if (d.Item1 > 0.0f) result = setPeak(d, true);
+                        else if (d.Item1 > 0.0f) setPeak(d, true);
                     }
-                    if (result == false && windowStartOffset == null)
-                    {
-                        if ((d.Item1 >= 0.0f && lastValue < 0.0f)
-                            || (d.Item1 <= 0.0f && lastValue > 0.0f))
-                        {
-                            // start time window
-                            windowStartOffset = d.Item2;
-                            peakCount1 = 0;
-                            peakCount0 = 0;
-                        }
-                    }
-                    lastValue = d.Item1;
                 }
 
                 //float[] samples = new float[audioStream.Length / audioStream.BlockAlign * audioStream.WaveFormat.Channels];
@@ -201,7 +176,7 @@ namespace softcmtif
                 for (int i = 0; i < shiftRegister.Length; i++) shiftRegister[i] = true;
             }
 
-            void notifyBit(bool? bit)
+            void notifyBit(bool bit)
             {
                 for (int i = 0; i < shiftRegister.Length - 1; i++) shiftRegister[i] = shiftRegister[i + 1];
                 shiftRegister[shiftRegister.Length - 1] = bit;
@@ -212,50 +187,49 @@ namespace softcmtif
                     for (int j = 0; j < 8; j++)
                     {
                         val >>= 1;
-                        if (shiftRegister[j + 1] == true) val |= 0x80;
-                        else if (shiftRegister[j + 1] == null) tapeReadError();
+                        if (shiftRegister[j + 1]) val |= 0x80;
                     }
                     notifyByte(val);
                     clearShiftRegister();
                 }
             }
 
-            void bitsAnalyzer()
-            {
-                if ((peakCount0 == 0 && peakCount1 == 0) || peakCount0 + peakCount1 * 2 > OnePeaks + 1)
-                {
-                    notifyBit(null);
-                }
-                else
-                {
-                    var d0 = Math.Abs(peakCount0 - ZeroPeaks);
-                    var d1 = Math.Abs(peakCount1 - OnePeaks);
-                    notifyBit(d0 < d1);
-                }
-
-                // initialize of next bit
-                windowStartOffset = null;
-            }
-
-            bool notifyPeak(long timeOffset)
-            {
-                //if (bVerbose && peakCount < 20) Console.Write($"{timeOffset},");
-                peakCount++;
-                var b = timeOffset < ThresholdPeakCount;
-                if (b) peakCount1++; else peakCount0++;
-                //if (peaklogWriter != null) peaklogWriter.WriteLine($"[{(b ? 1 : 0)}]");
-                return b;
-            }
-
-            bool setPeak(Tuple<float, long> d, bool upperValue)
+            void setPeak(Tuple<float, long> d, bool upperValue)
             {
                 var timeOffset = (peak.Item2 - lastPeakOffset) / audioStream.WaveFormat.Channels;
-                var r = notifyPeak(timeOffset);
+                notifyPeak(timeOffset);
                 //if (peaklogWriter != null) peaklogWriter.WriteLine($"PEAK {timeOffset} {peak.Item2}");
                 lastPeakOffset = peak.Item2;
                 peak = d;
                 upper = upperValue;
-                return r;
+            }
+
+            void notifyPeak(long timeOffset)
+            {
+                peakCount++;
+                //if (bVerbose && peakCount < 20) Console.Write($"{timeOffset},");
+                var b = timeOffset < ThresholdPeakCount;
+                //if (peaklogWriter != null) peaklogWriter.WriteLine($"[{(b ? 1 : 0)}]");
+
+                if (b) peakCount1++; else peakCount0++;
+                if (peakCount1 > peakCount0)
+                {
+                    if (peakCount1 + peakCount0 * 2 >= OnePeaks)
+                    {
+                        notifyBit(true);
+                        peakCount1 = 0;
+                        peakCount0 = 0;
+                    }
+                }
+                else
+                {
+                    if (peakCount1 + peakCount0 * 2 >= OnePeaks)
+                    {
+                        notifyBit(false);
+                        peakCount1 = 0;
+                        peakCount0 = 0;
+                    }
+                }
             }
 
             float[] readBlock()
@@ -364,13 +338,6 @@ namespace softcmtif
                     if (lowerPeak > pair.Item1) lowerPeak = pair.Item1;
                 }
                 if (bVerbose) Console.WriteLine($"Detect upperPeak/lowerPeak: {upperPeak}/{lowerPeak}");
-            }
-
-            void tapeReadError()
-            {
-                if (bSeekingHeader) return;
-                Console.WriteLine("Tape Read Error");
-                Process.GetCurrentProcess().Close();
             }
         }
     }
