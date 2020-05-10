@@ -57,7 +57,7 @@ namespace softcmtif
             int TypicalZeroCount;
             int peakCount1 = 0;
             int peakCount0 = 0;
-            bool[] shiftRegister = new bool[10];
+            bool[] shiftRegister = new bool[11];
             DetectMode currentMode = DetectMode.WaitHeader;
             int valueCounter = 0;
             string currentFileName = "";
@@ -267,7 +267,8 @@ namespace softcmtif
             {
                 for (int i = 0; i < shiftRegister.Length - 1; i++) shiftRegister[i] = shiftRegister[i + 1];
                 shiftRegister[shiftRegister.Length - 1] = bit;
-                if (shiftRegister[0] == false && shiftRegister[9] == true)
+                // check start bit and two stop bit
+                if (shiftRegister[0] == false && shiftRegister[9] == true && shiftRegister[10] == true)
                 {
                     // found frame
                     var val = 0;
