@@ -1,5 +1,6 @@
 ﻿using System;
 using System.ComponentModel.Design;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net.Http.Headers;
@@ -31,6 +32,13 @@ namespace softcmtif
         GettingBody,
     }
 
+    enum CDMode
+    {
+        CarrierDetecting,
+        CarrierDetected,
+        TransferMode
+    }
+
     class Program
     {
         static void Main(string[] args)
@@ -51,23 +59,25 @@ namespace softcmtif
             bool upper = true;
             Speeds speed = Speeds.s600bps;
             int OnePeaks;
-            //int ZeroPeaks;
+            int ZeroPeaks;
             int ThresholdPeakCount;
             int TypicalOneCount;
             int TypicalZeroCount;
             int peakCount1 = 0;
             int peakCount0 = 0;
-            bool[] shiftRegister = new bool[11];
+            bool?[] shiftRegister = new bool?[11];
             DetectMode currentMode = DetectMode.WaitHeader;
             int valueCounter = 0;
             string currentFileName = "";
             byte[] currentFileImage = new byte[32767];
             int currentFileImageSize = 0;
+            CDMode carrierDetectMode = CDMode.CarrierDetecting;
+            bool bitsInPeakLog = true;
 
             if (args.Length == 0)
             {
                 Console.Error.WriteLine("Soft CMT Interface by autumn");
-                Console.Error.WriteLine("usage: softcmtif INPUT_FILE_NAME [--verbose] [--300|--600|--1200] [--right|--left|--average|--maximum] [--peaklog FILE_NAME] [--outraw FILE_NAME] [--outdir PATH]");
+                Console.Error.WriteLine("usage: softcmtif INPUT_FILE_NAME [--verbose] [--300|--600|--1200] [--right|--left|--average|--maximum] [--peaklog FILE_NAME] [--bitsinpeaklog] [--outraw FILE_NAME] [--outdir PATH]");
                 return;
             }
             bool bVerbose = false;
@@ -96,6 +106,7 @@ namespace softcmtif
                 else if (item == "--left") channelType = ChannelType.Left;
                 else if (item == "--average") channelType = ChannelType.Average;
                 else if (item == "--maximum") channelType = ChannelType.Maximum;
+                else if (item == "--bitsinpeaklog") bitsInPeakLog = true;
                 else if (item == "--peaklog") peaklogWaiting = true;
                 else if (item == "--outraw") outRawWaiting = true;
                 else if (item == "--outdir") outDirWaiting = true;
@@ -226,6 +237,7 @@ namespace softcmtif
                         valueCounter = 0;
                         currentMode = DetectMode.GettingBody;
                         currentFileImageSize = 0;
+                        goToCarrierDetectMode();
                     }
                 }
                 else if (currentMode == DetectMode.GettingBody)
@@ -234,11 +246,12 @@ namespace softcmtif
                     if (value == 0)
                     {
                         valueCounter++;
-                        if( valueCounter == 12)
+                        if (valueCounter == 12)
                         {
                             saveFile();
                             valueCounter = 0;
                             currentMode = DetectMode.WaitHeader;
+                            goToCarrierDetectMode();
                         }
                     }
                     else
@@ -263,8 +276,15 @@ namespace softcmtif
                 for (int i = 0; i < shiftRegister.Length; i++) shiftRegister[i] = true;
             }
 
-            void notifyBit(bool bit)
+            void tapeReadError()
             {
+                Console.WriteLine($"Tape Read Error [offset:{currentBaseOffset + bufferPointer}]");
+                Process.GetCurrentProcess().Close();
+            }
+
+            void notifyBit(bool? bit)
+            {
+                if (bitsInPeakLog && peaklogWriter != null) peaklogWriter.WriteLine($"[{bit} {peakCount0} {peakCount1}]");
                 for (int i = 0; i < shiftRegister.Length - 1; i++) shiftRegister[i] = shiftRegister[i + 1];
                 shiftRegister[shiftRegister.Length - 1] = bit;
                 // check start bit and two stop bit
@@ -275,7 +295,12 @@ namespace softcmtif
                     for (int j = 0; j < 8; j++)
                     {
                         val >>= 1;
-                        if (shiftRegister[j + 1]) val |= 0x80;
+                        if (shiftRegister[j + 1] == true) val |= 0x80;
+                        else if (shiftRegister[j + 1] == null)
+                        {
+                            tapeReadError();
+                            return;
+                        } 
                     }
                     notifyByte(val);
                     clearShiftRegister();
@@ -292,6 +317,11 @@ namespace softcmtif
                 upper = upperValue;
             }
 
+            void goToCarrierDetectMode()
+            {
+                carrierDetectMode = CDMode.CarrierDetecting;
+            }
+
             void notifyPeak(long timeOffset)
             {
                 peakCount++;
@@ -299,24 +329,36 @@ namespace softcmtif
                 var b = timeOffset < ThresholdPeakCount;
                 //if (peaklogWriter != null) peaklogWriter.WriteLine($"[{(b ? 1 : 0)}]");
 
-                if (b) peakCount1++; else peakCount0++;
-                if (peakCount1 > peakCount0)
+                if (carrierDetectMode == CDMode.CarrierDetecting)
                 {
-                    if (peakCount1 + peakCount0 * 2 >= OnePeaks)
-                    {
-                        notifyBit(true);
-                        peakCount1 = 0;
-                        peakCount0 = 0;
-                    }
+                    if (b == false) return;
+                    carrierDetectMode = CDMode.CarrierDetected;
+                    return;
                 }
-                else
+                else if (carrierDetectMode == CDMode.CarrierDetected)
                 {
-                    if (peakCount1 + peakCount0 * 2 >= OnePeaks)
-                    {
-                        notifyBit(false);
-                        peakCount1 = 0;
-                        peakCount0 = 0;
-                    }
+                    if (b == true) return;
+                    carrierDetectMode = CDMode.TransferMode;
+                }
+
+                if (b) peakCount1++; else peakCount0++;
+                if (peakCount1 == OnePeaks && peakCount0 == 0)
+                {
+                    notifyBit(true);
+                    peakCount1 = 0;
+                    peakCount0 = 0;
+                }
+                else if (peakCount1 == 0 && peakCount0 == ZeroPeaks)
+                {
+                    notifyBit(false);
+                    peakCount1 = 0;
+                    peakCount0 = 0;
+                }
+                else if (peakCount1 + peakCount0 * 2 >= OnePeaks)
+                {
+                    notifyBit(null);
+                    peakCount1 = 0;
+                    peakCount0 = 0;
                 }
             }
 
@@ -401,15 +443,15 @@ namespace softcmtif
                 {
                     case Speeds.s300bps:
                         OnePeaks = 8 * 2;
-                        //ZeroPeaks = 4 * 2;
+                        ZeroPeaks = 4 * 2;
                         break;
                     case Speeds.s600bps:
                         OnePeaks = 4 * 2;
-                        //ZeroPeaks = 2 * 2;
+                        ZeroPeaks = 2 * 2;
                         break;
                     default:
                         OnePeaks = 2 * 2;
-                        //ZeroPeaks = 1 * 2;
+                        ZeroPeaks = 1 * 2;
                         break;
                 }
             }
