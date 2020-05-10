@@ -23,6 +23,14 @@ namespace softcmtif
         s300bps, s600bps, s1200bps
     }
 
+    enum DetectMode
+    {
+        WaitHeader,
+        CountingD3,
+        GettingFileName,
+        GettingBody,
+    }
+
     class Program
     {
         static void Main(string[] args)
@@ -36,29 +44,36 @@ namespace softcmtif
             long peakCount = 0;
             TextWriter peaklogWriter = null;
             TextWriter outRawWriter = null;
+            string outputDirectory = null;
             float upperPeak, lowerPeak;
             Tuple<float, long> peak = new Tuple<float, long>(0, 0);
             long lastPeakOffset = 0;
             bool upper = true;
             Speeds speed = Speeds.s600bps;
             int OnePeaks;
-            int ZeroPeaks;
+            //int ZeroPeaks;
             int ThresholdPeakCount;
             int TypicalOneCount;
             int TypicalZeroCount;
             int peakCount1 = 0;
             int peakCount0 = 0;
             bool[] shiftRegister = new bool[10];
+            DetectMode currentMode = DetectMode.WaitHeader;
+            int valueCounter = 0;
+            string currentFileName = "";
+            byte[] currentFileImage = new byte[32767];
+            int currentFileImageSize = 0;
 
             if (args.Length == 0)
             {
                 Console.Error.WriteLine("Soft CMT Interface by autumn");
-                Console.Error.WriteLine("usage: softcmtif INPUT_FILE_NAME [--verbose] [--300|--600|--1200] [--right|--left|--average|--maximum] [--peaklog FILE_NAME] [--outraw FILE_NAME]");
+                Console.Error.WriteLine("usage: softcmtif INPUT_FILE_NAME [--verbose] [--300|--600|--1200] [--right|--left|--average|--maximum] [--peaklog FILE_NAME] [--outraw FILE_NAME] [--outdir PATH]");
                 return;
             }
             bool bVerbose = false;
             bool peaklogWaiting = false;
             bool outRawWaiting = false;
+            bool outDirWaiting = false;
             foreach (var item in args.Skip(1))
             {
                 if (peaklogWaiting)
@@ -71,6 +86,11 @@ namespace softcmtif
                     outRawWriter = File.CreateText(item);
                     outRawWaiting = false;
                 }
+                else if (outDirWaiting)
+                {
+                    outRawWriter = File.CreateText(item);
+                    outRawWaiting = false;
+                }
                 else if (item == "--verbose") bVerbose = true;
                 else if (item == "--right") channelType = ChannelType.Right;
                 else if (item == "--left") channelType = ChannelType.Left;
@@ -78,6 +98,7 @@ namespace softcmtif
                 else if (item == "--maximum") channelType = ChannelType.Maximum;
                 else if (item == "--peaklog") peaklogWaiting = true;
                 else if (item == "--outraw") outRawWaiting = true;
+                else if (item == "--outdir") outDirWaiting = true;
                 else if (item == "--300") speed = Speeds.s300bps;
                 else if (item == "--600") speed = Speeds.s600bps;
                 else if (item == "--1200") speed = Speeds.s1200bps;
@@ -163,10 +184,76 @@ namespace softcmtif
             if (outRawWriter != null) outRawWriter.Close();
             Console.WriteLine("Done");
 
+            void saveFile()
+            {
+                if (outputDirectory == null)
+                {
+                    Console.WriteLine("If you want to save this file, use --outdir option");
+                    return;
+                }
+                var fullpath = Path.Combine(outputDirectory, currentFileName);
+                using (var stream = File.Create(fullpath))
+                {
+                    stream.Write(currentFileImage, 0, currentFileImageSize - 9);
+                }
+                Console.WriteLine($"{fullpath} saved");
+            }
+
+            void fileDetector(int value)
+            {
+                if (currentMode == DetectMode.WaitHeader)
+                {
+                    if (value == 0xd3)
+                    {
+                        valueCounter++;
+                        if (valueCounter >= 10)
+                        {
+                            valueCounter = 0;
+                            currentFileName = "";
+                            currentMode = DetectMode.GettingFileName;
+                        }
+                    }
+                    else
+                        valueCounter = 0;
+                }
+                else if (currentMode == DetectMode.GettingFileName)
+                {
+                    if (value != 0) currentFileName += (char)value;
+                    valueCounter++;
+                    if (valueCounter >= 6)
+                    {
+                        Console.WriteLine($"Found: {currentFileName} (N-BASIC Binary Image)");
+                        valueCounter = 0;
+                        currentMode = DetectMode.GettingBody;
+                        currentFileImageSize = 0;
+                    }
+                }
+                else if (currentMode == DetectMode.GettingBody)
+                {
+                    currentFileImage[currentFileImageSize++] = (byte)value;
+                    if (value == 0)
+                    {
+                        valueCounter++;
+                        if( valueCounter == 12)
+                        {
+                            saveFile();
+                            valueCounter = 0;
+                            currentMode = DetectMode.WaitHeader;
+                        }
+                    }
+                    else
+                    {
+                        valueCounter = 0;
+                    }
+                }
+            }
+
             void notifyByte(int value)
             {
                 if (peaklogWriter != null) peaklogWriter.WriteLine($"BYTE {value:X2}");
                 if (outRawWriter != null) outRawWriter.Write((char)value);
+
+                fileDetector(value);
 
                 // TBW
             }
@@ -313,15 +400,15 @@ namespace softcmtif
                 {
                     case Speeds.s300bps:
                         OnePeaks = 8 * 2;
-                        ZeroPeaks = 4 * 2;
+                        //ZeroPeaks = 4 * 2;
                         break;
                     case Speeds.s600bps:
                         OnePeaks = 4 * 2;
-                        ZeroPeaks = 2 * 2;
+                        //ZeroPeaks = 2 * 2;
                         break;
                     default:
                         OnePeaks = 2 * 2;
-                        ZeroPeaks = 1 * 2;
+                        //ZeroPeaks = 1 * 2;
                         break;
                 }
             }
