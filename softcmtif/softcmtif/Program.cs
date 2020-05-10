@@ -88,8 +88,8 @@ namespace softcmtif
                 }
                 else if (outDirWaiting)
                 {
-                    outRawWriter = File.CreateText(item);
-                    outRawWaiting = false;
+                    outputDirectory = item;
+                    outDirWaiting = false;
                 }
                 else if (item == "--verbose") bVerbose = true;
                 else if (item == "--right") channelType = ChannelType.Right;
