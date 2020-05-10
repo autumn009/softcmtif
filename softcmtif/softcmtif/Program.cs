@@ -191,7 +191,7 @@ namespace softcmtif
                     Console.WriteLine("If you want to save this file, use --outdir option");
                     return;
                 }
-                var fullpath = Path.Combine(outputDirectory, currentFileName);
+                var fullpath = Path.Combine(outputDirectory, DateTime.Now.ToString("yyyyMMddHHmmss") + " " + currentFileName + ".bin");
                 using (var stream = File.Create(fullpath))
                 {
                     stream.Write(currentFileImage, 0, currentFileImageSize - 9);
