@@ -194,7 +194,7 @@ namespace softcmtif
                 var fullpath = Path.Combine(outputDirectory, DateTime.Now.ToString("yyyyMMddHHmmss") + " " + currentFileName + ".bin");
                 using (var stream = File.Create(fullpath))
                 {
-                    stream.Write(currentFileImage, 0, currentFileImageSize - 9);
+                    stream.Write(currentFileImage, 0, currentFileImageSize - 9 + 2);
                 }
                 Console.WriteLine($"{fullpath} saved");
             }
