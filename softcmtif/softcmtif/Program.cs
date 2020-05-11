@@ -41,6 +41,22 @@ namespace softcmtif
 
     class Program
     {
+        private static TextWriter peaklogWriter = null;
+        private static CDMode _carrierDetectMode = CDMode.CarrierDetecting;
+        private static CDMode carrierDetectMode
+        {
+            get
+            {
+                return _carrierDetectMode;
+            }
+            set
+            {
+#if DEBUG
+                if (peaklogWriter != null) peaklogWriter.WriteLine($"DEBUG: carrierDetectMode={value}");
+#endif
+                _carrierDetectMode = value;
+            }
+        }
         static void Main(string[] args)
         {
             const int NoiseSilencerEffect = 10;
@@ -50,7 +66,6 @@ namespace softcmtif
             float[] buffer = null;
             int bufferPointer = 0;
             long peakCount = 0;
-            TextWriter peaklogWriter = null;
             TextWriter outRawWriter = null;
             string outputDirectory = null;
             float upperPeak, lowerPeak;
@@ -71,7 +86,6 @@ namespace softcmtif
             string currentFileName = "";
             byte[] currentFileImage = new byte[32767];
             int currentFileImageSize = 0;
-            CDMode carrierDetectMode = CDMode.CarrierDetecting;
             bool bitsInPeakLog = true;
 
             if (args.Length == 0)
