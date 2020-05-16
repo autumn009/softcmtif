@@ -38,6 +38,7 @@ namespace softcmtif
     {
         CarrierDetecting,
         CarrierDetected,
+        TryingFirstByte,
         TransferMode
     }
 
@@ -89,6 +90,7 @@ namespace softcmtif
             byte[] currentFileImage = new byte[32767];
             int currentFileImageSize = 0;
             bool bitsInPeakLog = true;
+            int tryingBits = 0;
 
             if (args.Length == 0)
             {
@@ -300,6 +302,7 @@ namespace softcmtif
 
             void notifyBit(bool? bit)
             {
+                tryingBits++;
                 if (bitsInPeakLog && peaklogWriter != null) peaklogWriter.WriteLine($"[{bit} {peakCount0} {peakCount1}]");
                 for (int i = 0; i < shiftRegister.Length - 1; i++) shiftRegister[i] = shiftRegister[i + 1];
                 shiftRegister[shiftRegister.Length - 1] = bit;
@@ -319,7 +322,12 @@ namespace softcmtif
                         } 
                     }
                     notifyByte(val);
+                    if (carrierDetectMode == CDMode.TryingFirstByte) carrierDetectMode = CDMode.TransferMode;
                     clearShiftRegister();
+                }
+                else if(tryingBits == 10)
+                {
+                    if (carrierDetectMode == CDMode.TryingFirstByte) carrierDetectMode = CDMode.CarrierDetecting;
                 }
             }
 
@@ -354,7 +362,8 @@ namespace softcmtif
                 else if (carrierDetectMode == CDMode.CarrierDetected)
                 {
                     if (b == true) return;
-                    carrierDetectMode = CDMode.TransferMode;
+                    carrierDetectMode = CDMode.TryingFirstByte;
+                    tryingBits = 0;
                 }
 
                 if (b) peakCount1++; else peakCount0++;
@@ -375,6 +384,7 @@ namespace softcmtif
                     notifyBit(null);
                     peakCount1 = 0;
                     peakCount0 = 0;
+                    if (carrierDetectMode == CDMode.TryingFirstByte) carrierDetectMode = CDMode.CarrierDetecting;
                 }
             }
 
