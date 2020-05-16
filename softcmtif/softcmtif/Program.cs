@@ -418,7 +418,7 @@ namespace softcmtif
                 else if (peakCount1 + peakCount0 * 2 >= OnePeaks)
                 {
 #if DEBUG
-                    if (peakCount0 == 3 && peakCount1 == 3) waveLogSaver();
+                    if (bufferPointer + currentBaseOffset == 5380) waveLogSaver();
 #endif
                     notifyBit(null);
                     peakCount1 = 0;
@@ -462,9 +462,6 @@ namespace softcmtif
 #endif
 
                 var r = new Tuple<float, long>(v, bufferPointer + currentBaseOffset);
-#if DEBUG
-                waveRecorder.Add(r);
-#endif
                 bufferPointer++;
                 return r;
             }
@@ -474,7 +471,7 @@ namespace softcmtif
                 Tuple<float, long> t = null;
                 var l = readRawUnit();
                 if (l == null) return null;
-                if (audioStream.WaveFormat.Channels == 0)
+                if (audioStream.WaveFormat.Channels == 1)
                 {
                     t = l;
                 }
@@ -499,6 +496,9 @@ namespace softcmtif
                             break;
                     }
                 }
+#if DEBUG
+                waveRecorder.Add(t);
+#endif
                 return t;
             }
 
