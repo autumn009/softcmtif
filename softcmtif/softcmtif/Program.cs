@@ -1,6 +1,7 @@
 ﻿//#define NOISE_SILENCER_ENABLE
 
 using System;
+using System.Collections.Generic;
 using System.ComponentModel.Design;
 using System.Diagnostics;
 using System.IO;
@@ -91,6 +92,10 @@ namespace softcmtif
             int currentFileImageSize = 0;
             bool bitsInPeakLog = true;
             int tryingBits = 0;
+#if DEBUG
+            var waveRecorder = new List<Tuple<float,long>>();
+            var peakRecorder = new List<Tuple<float, long>>();
+#endif
 
             if (args.Length == 0)
             {
@@ -178,6 +183,9 @@ namespace softcmtif
 
                 // detect wave peaks
                 audioStream.Position = 0;
+                peakCount1 = 0;
+                peakCount0 = 0;
+                currentBaseOffset = 0;
                 for (; ; )
                 {
                     var d = readUnit();
@@ -212,6 +220,31 @@ namespace softcmtif
             if (peaklogWriter != null) peaklogWriter.Close();
             if (outRawWriter != null) outRawWriter.Close();
             Console.WriteLine("Done");
+
+#if DEBUG
+            void waveLogSaver()
+            {
+                //Console.WriteLine($"waveRecorder.Count()=={waveRecorder.Count()}");
+                //Console.WriteLine($"waveRecorder[0].Item2=={waveRecorder[0].Item2}");
+                //Console.WriteLine($"waveRecorder[1].Item2=={waveRecorder[1].Item2}");
+                using (var w = File.CreateText("wavelog1.csv"))
+                {
+                    foreach (var item in waveRecorder.TakeLast(300))
+                    {
+                        w.WriteLine($"{item.Item2},{item.Item1}");
+                    }
+                }
+                using (var w = File.CreateText("peaklog1.csv"))
+                {
+                    foreach (var item in peakRecorder.TakeLast(100))
+                    {
+                        w.WriteLine($"{item.Item2},{item.Item1}");
+                    }
+                }
+                Console.WriteLine("Fatal Exit");
+                Environment.Exit(0);
+            }
+#endif
 
             void saveFile()
             {
@@ -333,6 +366,9 @@ namespace softcmtif
 
             void setPeak(Tuple<float, long> d, bool upperValue)
             {
+#if DEBUG
+                peakRecorder.Add(d);
+#endif
                 var timeOffset = (peak.Item2 - lastPeakOffset) / audioStream.WaveFormat.Channels;
                 notifyPeak(timeOffset);
                 //if (peaklogWriter != null) peaklogWriter.WriteLine($"PEAK {timeOffset} {peak.Item2}");
@@ -381,6 +417,9 @@ namespace softcmtif
                 }
                 else if (peakCount1 + peakCount0 * 2 >= OnePeaks)
                 {
+#if DEBUG
+                    if (peakCount0 == 3 && peakCount1 == 3) waveLogSaver();
+#endif
                     notifyBit(null);
                     peakCount1 = 0;
                     peakCount0 = 0;
@@ -423,6 +462,9 @@ namespace softcmtif
 #endif
 
                 var r = new Tuple<float, long>(v, bufferPointer + currentBaseOffset);
+#if DEBUG
+                waveRecorder.Add(r);
+#endif
                 bufferPointer++;
                 return r;
             }
