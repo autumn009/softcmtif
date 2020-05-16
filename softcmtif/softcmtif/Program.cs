@@ -1,4 +1,6 @@
-﻿using System;
+﻿//#define NOISE_SILENCER_ENABLE
+
+using System;
 using System.ComponentModel.Design;
 using System.Diagnostics;
 using System.IO;
@@ -396,6 +398,7 @@ namespace softcmtif
                 }
                 var v = buffer[bufferPointer];
 
+#if NOISE_SILENCER_ENABLE
                 // noise silencer
                 if (v > 0 && v < upperPeak / NoiseSilencerEffect)
                 {
@@ -407,6 +410,7 @@ namespace softcmtif
                     v = 0;
                     //if (peaklogWriter != null) peaklogWriter.WriteLine("Detect lower cancel");
                 }
+#endif
 
                 var r = new Tuple<float, long>(v, bufferPointer + currentBaseOffset);
                 bufferPointer++;
