@@ -414,7 +414,11 @@ namespace softcmtif
                 {
                     if (b == true) return;
                     carrierDetectMode = CDMode.TryingFirstByte;
+                    clearShiftRegister();
                     tryingBits = 0;
+                    peakCount1 = 0;
+                    peakCount0 = 1;
+                    return;
                 }
 
                 if (b) peakCount1++; else peakCount0++;
