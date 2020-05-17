@@ -9,6 +9,7 @@ using System.Linq;
 using System.Net.Http.Headers;
 using System.Runtime.InteropServices.ComTypes;
 using System.Threading.Tasks;
+using System.Xml.Xsl;
 using NAudio.Wave;
 
 namespace softcmtif
@@ -95,6 +96,7 @@ namespace softcmtif
 #if DEBUG
             var waveRecorder = new List<Tuple<float,long>>();
             var peakRecorder = new List<Tuple<float, long>>();
+            var waveLogEnabled = false;
 #endif
 
             if (args.Length == 0)
@@ -186,6 +188,9 @@ namespace softcmtif
                 peakCount1 = 0;
                 peakCount0 = 0;
                 currentBaseOffset = 0;
+#if DEBUG
+                waveLogEnabled = true;
+#endif
                 for (; ; )
                 {
                     var d = readUnit();
@@ -229,7 +234,9 @@ namespace softcmtif
                 //Console.WriteLine($"waveRecorder[1].Item2=={waveRecorder[1].Item2}");
                 using (var w = File.CreateText("wavelog1.csv"))
                 {
-                    foreach (var item in waveRecorder.TakeLast(300))
+                    //var waves = waveRecorder.TakeLast(300);
+                    var waves = waveRecorder;
+                    foreach (var item in waves)
                     {
                         w.WriteLine($"{item.Item2},{item.Item1}");
                     }
@@ -330,7 +337,8 @@ namespace softcmtif
             void tapeReadError()
             {
                 Console.WriteLine($"Tape Read Error [offset:{currentBaseOffset + bufferPointer}]");
-                Environment.Exit(0);
+                //Environment.Exit(0);
+                waveLogSaver();
             }
 
             void notifyBit(bool? bit)
@@ -372,7 +380,7 @@ namespace softcmtif
             void setPeak(Tuple<float, long> d, bool upperValue)
             {
 #if DEBUG
-                peakRecorder.Add(d);
+                if (waveLogEnabled) peakRecorder.Add(d);
 #endif
                 var timeOffset = (peak.Item2 - lastPeakOffset) / audioStream.WaveFormat.Channels;
                 notifyPeak(timeOffset);
@@ -502,7 +510,7 @@ namespace softcmtif
                     }
                 }
 #if DEBUG
-                waveRecorder.Add(t);
+                if (waveLogEnabled) waveRecorder.Add(t);
 #endif
                 return t;
             }
