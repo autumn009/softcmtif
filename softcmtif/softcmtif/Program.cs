@@ -350,6 +350,11 @@ namespace softcmtif
                         if (shiftRegister[j + 1] == true) val |= 0x80;
                         else if (shiftRegister[j + 1] == null)
                         {
+                            if (carrierDetectMode == CDMode.TryingFirstByte)
+                            {
+                                carrierDetectMode = CDMode.TransferMode;
+                                return;
+                            }
                             tapeReadError();
                             return;
                         } 
