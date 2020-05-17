@@ -330,7 +330,7 @@ namespace softcmtif
             void tapeReadError()
             {
                 Console.WriteLine($"Tape Read Error [offset:{currentBaseOffset + bufferPointer}]");
-                Process.GetCurrentProcess().Close();
+                Environment.Exit(0);
             }
 
             void notifyBit(bool? bit)
