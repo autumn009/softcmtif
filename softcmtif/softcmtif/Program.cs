@@ -249,6 +249,8 @@ namespace softcmtif
                     }
                 }
                 Console.WriteLine("Fatal Exit");
+                if (peaklogWriter != null) peaklogWriter.Close();
+                if (outRawWriter != null) outRawWriter.Close();
                 Environment.Exit(0);
             }
 #endif
